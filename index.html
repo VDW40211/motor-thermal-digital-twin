@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Motor Thermal Digital Twin — first-order thermal model for induction motors. Engineering estimate only, not a substitute for physical measurement.">
+    <title>Motor Thermal Digital Twin</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- ======================= HEADER ======================= -->
+    <header class="app-header">
+        <div class="app-header__title">
+            <h1>Motor Thermal Digital Twin</h1>
+            <p class="app-header__subtitle">
+                First-order thermal model &middot; <span class="label label--estimated">Estimated</span> results &middot; v0.1.0
+            </p>
+        </div>
+        <div class="app-header__controls">
+            <span id="statusBadge" class="badge badge--standby" role="status" aria-live="polite">STANDBY</span>
+            <button type="button" id="btnThemeToggle" class="btn btn--ghost" title="Toggle light/dark theme">Theme</button>
+        </div>
+    </header>
+
+    <main class="app-layout">
+
+        <!-- ============== LEFT COLUMN : INPUTS ============== -->
+        <section class="panel panel--motor" aria-labelledby="motorInfoTitle">
+            <h2 id="motorInfoTitle">Motor Information</h2>
+            <p class="panel__hint">Nameplate data. Fields marked <span class="label label--typical">Typical</span> use assumed defaults.</p>
+
+            <div class="form-grid">
+                <div class="form-field form-field--wide">
+                    <label for="inpMotorDesignation">Designation / Tag</label>
+                    <input type="text" id="inpMotorDesignation" value="MOTOR-001" placeholder="e.g. FEED-PUMP-M1">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpRatedPower">Rated Power (kW)</label>
+                    <input type="number" id="inpRatedPower" value="75" min="0.1" step="0.1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpRatedVoltage">Rated Voltage (V, line)</label>
+                    <input type="number" id="inpRatedVoltage" value="400" min="1" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpRatedCurrent">Rated Current (A, line)</label>
+                    <input type="number" id="inpRatedCurrent" value="130" min="0.1" step="0.1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpRatedFrequency">Rated Frequency (Hz)</label>
+                    <input type="number" id="inpRatedFrequency" value="50" min="1" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpRatedSpeed">Rated Speed (rpm)</label>
+                    <input type="number" id="inpRatedSpeed" value="1480" min="1" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpEfficiency">Efficiency at Full Load (%)</label>
+                    <input type="number" id="inpEfficiency" value="93" min="10" max="100" step="0.1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpServiceFactor">Service Factor (–)</label>
+                    <input type="number" id="inpServiceFactor" value="1.0" min="1" max="1.5" step="0.05" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="selInsulationClass">Insulation Class</label>
+                    <select id="selInsulationClass">
+                        <option value="A">A (105 &deg;C)</option>
+                        <option value="E">E (120 &deg;C)</option>
+                        <option value="B">B (130 &deg;C)</option>
+                        <option value="F" selected>F (155 &deg;C)</option>
+                        <option value="H">H (180 &deg;C)</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="selCoolingType">Cooling Type</label>
+                    <select id="selCoolingType">
+                        <option value="TEFC" selected>TEFC (shaft-mounted fan)</option>
+                        <option value="ODP">ODP (open drip-proof)</option>
+                        <option value="TENV">TENV (non-ventilated)</option>
+                        <option value="FORCED">Forced ventilation (external blower)</option>
+                    </select>
+                </div>
+            </div>
+
+            <details class="details-block" id="assumptionsBlock">
+                <summary>Model Assumptions &mdash; <span class="label label--assumed">Assumed / Typical</span></summary>
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label for="inpCopperShare">Copper Loss Share (%)</label>
+                        <input type="number" id="inpCopperShare" value="60" min="1" max="99" step="1" inputmode="decimal">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpCoreShare">Core Loss Share (%)</label>
+                        <input type="number" id="inpCoreShare" value="20" min="1" max="99" step="1" inputmode="decimal">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpMechShare">Mechanical Loss Share (%)</label>
+                        <input type="number" id="inpMechShare" value="10" min="1" max="99" step="1" inputmode="decimal">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpStrayShare">Stray Load Loss Share (%)</label>
+                        <input type="number" id="inpStrayShare" value="10" min="1" max="99" step="1" inputmode="decimal">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpHotSpotAllowance">Hot-Spot Allowance (K)</label>
+                        <input type="number" id="inpHotSpotAllowance" value="10" min="0" step="1" inputmode="decimal">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpNoLoadCurrentPct">No-Load Current (% of rated) <span class="label label--typical">Typical</span></label>
+                        <input type="number" id="inpNoLoadCurrentPct" value="30" min="5" max="60" step="1" inputmode="decimal">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpMeasuredResistance">Stator Resistance / phase (&Omega;) — <span class="label label--measured">Measured</span> optional</label>
+                        <input type="number" id="inpMeasuredResistance" value="" min="0" step="0.0001" placeholder="leave blank = estimated">
+                    </div>
+                    <div class="form-field">
+                        <label for="inpMeasuredResistanceTemp">Resistance Measured At (&deg;C)</label>
+                        <input type="number" id="inpMeasuredResistanceTemp" value="25" step="1" inputmode="decimal">
+                    </div>
+                </div>
+                <p class="panel__hint">
+                    Loss segregation shares are approximations for this machine class, not measured values.
+                    Per-phase <em>equivalent</em> resistance convention applies (delta: enter terminal value &divide; 3).
+                </p>
+            </details>
+        </section>
+
+        <section class="panel panel--operating" aria-labelledby="operatingTitle">
+            <h2 id="operatingTitle">Operating Data</h2>
+            <p class="panel__hint">Current operating point. Values may be <span class="label label--measured">Measured</span> or <span class="label label--estimated">Estimated</span> from load.</p>
+
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="inpLoadPercent">Load (% of rated)</label>
+                    <input type="number" id="inpLoadPercent" value="100" min="0" max="300" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpLineCurrent">Line Current (A)</label>
+                    <input type="number" id="inpLineCurrent" value="130" min="0" step="0.1" inputmode="decimal" disabled>
+                    <label class="check-label">
+                        <input type="checkbox" id="chkAutoCurrent" checked>
+                        Estimate current from load ( Typical no-load model )
+                    </label>
+                </div>
+
+                <div class="form-field">
+                    <label for="inpLineVoltage">Line Voltage (V)</label>
+                    <input type="number" id="inpLineVoltage" value="400" min="1" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpOperatingFrequency">Frequency (Hz)</label>
+                    <input type="number" id="inpOperatingFrequency" value="50" min="5" max="120" step="0.5" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpAmbientTemp">Ambient Temperature (&deg;C)</label>
+                    <input type="number" id="inpAmbientTemp" value="40" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpVoltageImbalance">Voltage Imbalance (%)</label>
+                    <input type="number" id="inpVoltageImbalance" value="0" min="0" max="10" step="0.1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpStartsPerHour">Starts per Hour</label>
+                    <input type="number" id="inpStartsPerHour" value="0" min="0" max="60" step="1" inputmode="decimal">
+                </div>
+
+                <div class="form-field">
+                    <label for="inpRuntimeHours">Time at Current Load (h)</label>
+                    <input type="number" id="inpRuntimeHours" value="8" min="0" step="0.5" inputmode="decimal">
+                </div>
+            </div>
+
+            <div class="panel__actions">
+                <button type="button" id="btnCalculate" class="btn btn--primary">Run Thermal Estimate</button>
+                <button type="button" id="btnResetInputs" class="btn btn--ghost">Reset Inputs</button>
+                <label class="check-label check-label--inline">
+                    <input type="checkbox" id="chkAutoRun">
+                    Auto-run on input change
+                </label>
+            </div>
+        </section>
+
+        <!-- ============== CENTER COLUMN : VISUALIZATION + KPIs ============== -->
+        <section class="panel panel--visualization" aria-labelledby="vizTitle">
+            <h2 id="vizTitle">Motor Visualization</h2>
+
+            <figure class="motor-figure">
+                <svg id="svgMotor" viewBox="0 0 640 380" role="img"
+                     aria-label="Explanatory cutaway illustration of an induction motor: stator, winding region, rotor, shaft, bearings, fan and terminal box. Colors will indicate estimated temperature.">
+                    <!-- Base / feet -->
+                    <polygon points="200,290 220,320 260,320 250,290" class="part-frame"/>
+                    <polygon points="380,290 390,320 430,320 450,290" class="part-frame"/>
+                    <rect x="180" y="318" width="290" height="10" rx="3" class="part-frame"/>
+
+                    <!-- Terminal box -->
+                    <rect x="280" y="52" width="80" height="40" rx="4" class="part-terminalbox"/>
+                    <rect x="292" y="62" width="56" height="8" rx="2" class="part-terminalbox-detail"/>
+
+                    <!-- Stator frame -->
+                    <rect x="150" y="90" width="320" height="200" rx="14" class="part-stator"/>
+
+                    <!-- Stator core (laminations ring) -->
+                    <rect x="165" y="105" width="290" height="170" rx="8" class="part-core"/>
+
+                    <!-- Winding region: slot bands + end windings -->
+                    <rect x="180" y="118" width="260" height="22" rx="6" class="part-winding"/>
+                    <rect x="180" y="240" width="260" height="22" rx="6" class="part-winding"/>
+                    <ellipse cx="152" cy="190" rx="16" ry="86" class="part-winding"/>
+                    <ellipse cx="478" cy="190" rx="16" ry="86" class="part-winding"/>
+
+                    <!-- Rotor + shaft group (rotation candidate) -->
+                    <g id="svgRotorGroup">
+                        <rect x="200" y="148" width="220" height="84" rx="42" class="part-rotor"/>
+                        <rect x="52" y="182" width="540" height="16" rx="8" class="part-shaft"/>
+                    </g>
+
+                    <!-- Bearings -->
+                    <rect x="118" y="172" width="22" height="36" rx="4" class="part-bearing"/>
+                    <rect x="480" y="172" width="22" height="36" rx="4" class="part-bearing"/>
+
+                    <!-- Fan + cowl -->
+                    <g id="svgFanGroup">
+                        <rect x="560" y="180" width="34" height="20" rx="6" class="part-fan-hub"/>
+                        <polygon points="556,178 576,140 588,146 570,182" class="part-fan"/>
+                        <polygon points="556,202 576,240 588,234 570,198" class="part-fan"/>
+                        <polygon points="570,190 606,170 612,180 578,196" class="part-fan"/>
+                    </g>
+                    <path d="M 505,120 Q 620,120 620,190 Q 620,260 505,260 L 505,238 Q 595,238 595,190 Q 595,142 505,142 Z" class="part-cowl"/>
+
+                    <!-- Labels -->
+                    <text x="310" y="46" class="svg-label">Terminal Box</text>
+                    <text x="310" y="82" class="svg-label svg-label--small"></text>
+                    <text x="310" y="105" class="svg-label">Stator</text>
+                    <text x="310" y="140" class="svg-label svg-label--small">Winding Region</text>
+                    <text x="310" y="196" class="svg-label svg-label--small">Rotor</text>
+                    <text x="80" y="230" class="svg-label svg-label--small">Bearing</text>
+                    <text x="80" y="170" class="svg-label svg-label--small">Shaft (DE)</text>
+                    <text x="565" y="120" class="svg-label svg-label--small">Fan</text>
+                </svg>
+
+                <figcaption>
+                    Explanatory illustration only &mdash; not a CFD / finite-element thermal simulation.
+                    <span class="viz-legend">
+                        <span class="viz-legend__bar" aria-hidden="true"></span>
+                        <span class="viz-legend__text"><span id="vizLegendMin">20&deg;C</span> &rarr; <span id="vizLegendMax">155&deg;C</span> (scale placeholder)</span>
+                    </span>
+                </figcaption>
+            </figure>
+        </section>
+
+        <section class="panel panel--kpis" aria-labelledby="kpiTitle">
+            <h2 id="kpiTitle">Key Indicators</h2>
+            <div class="kpi-grid">
+
+                <article class="kpi-card" data-kpi="windingTemp">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Est. Winding Temperature</span>
+                        <span class="label label--estimated" data-provenance>Estimated</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiWindingTemp">&mdash;</span><span class="kpi-unit">&deg;C</span></div>
+                    <div class="kpi-sub" id="kpiWindingTempSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcWindingTemp">Show Calculation</button>
+                    <div class="kpi-calc" id="calcWindingTemp" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="utilization">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Thermal Utilization</span>
+                        <span class="label label--calculated" data-provenance>Calculated</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiUtilization">&mdash;</span><span class="kpi-unit">%</span></div>
+                    <div class="kpi-sub" id="kpiUtilizationSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcUtilization">Show Calculation</button>
+                    <div class="kpi-calc" id="calcUtilization" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="margin">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Thermal Margin</span>
+                        <span class="label label--calculated" data-provenance>Calculated</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiMargin">&mdash;</span><span class="kpi-unit">K</span></div>
+                    <div class="kpi-sub" id="kpiMarginSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcMargin">Show Calculation</button>
+                    <div class="kpi-calc" id="calcMargin" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="totalLosses">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Total Losses</span>
+                        <span class="label label--estimated" data-provenance>Estimated</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiTotalLosses">&mdash;</span><span class="kpi-unit">kW</span></div>
+                    <div class="kpi-sub" id="kpiTotalLossesSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcTotalLosses">Show Calculation</button>
+                    <div class="kpi-calc" id="calcTotalLosses" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="timeConstant">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Thermal Time Constant</span>
+                        <span class="label label--typical" data-provenance>Typical</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiTimeConstant">&mdash;</span><span class="kpi-unit">min</span></div>
+                    <div class="kpi-sub" id="kpiTimeConstantSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcTimeConstant">Show Calculation</button>
+                    <div class="kpi-calc" id="calcTimeConstant" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="confidence">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Confidence Score</span>
+                        <span class="label label--calculated" data-provenance>Calculated</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiConfidence">&mdash;</span><span class="kpi-unit">%</span></div>
+                    <div class="kpi-sub" id="kpiConfidenceSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcConfidence">Show Calculation</button>
+                    <div class="kpi-calc" id="calcConfidence" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="health">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Thermal Health Score</span>
+                        <span class="label label--derived" data-provenance>Derived</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiHealth">&mdash;</span><span class="kpi-unit">/100</span></div>
+                    <div class="kpi-sub" id="kpiHealthSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcHealth">Show Calculation</button>
+                    <div class="kpi-calc" id="calcHealth" hidden></div>
+                </article>
+
+                <article class="kpi-card" data-kpi="tripTime">
+                    <div class="kpi-head">
+                        <span class="kpi-label">Predicted Time to Limit</span>
+                        <span class="label label--estimated" data-provenance>Estimated</span>
+                    </div>
+                    <div class="kpi-value"><span class="kpi-number" id="kpiTripTime">&mdash;</span><span class="kpi-unit">min</span></div>
+                    <div class="kpi-sub" id="kpiTripTimeSub">Awaiting calculation</div>
+                    <button type="button" class="btn btn--link kpi-calc-toggle" data-calc-target="calcTripTime">Show Calculation</button>
+                    <div class="kpi-calc" id="calcTripTime" hidden></div>
+                </article>
+            </div>
+        </section>
+
+        <!-- ============== RIGHT COLUMN : CHARTS, DIAGNOSTICS, TOOLS ============== -->
+        <section class="panel panel--charts" aria-labelledby="chartsTitle">
+            <h2 id="chartsTitle">Trends</h2>
+            <div class="chart-grid">
+                <div class="chart-card">
+                    <h3>Temperature vs Time</h3>
+                    <canvas id="chartTemperature" role="img" aria-label="Winding temperature versus time chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Current vs Time</h3>
+                    <canvas id="chartCurrent" role="img" aria-label="Line current versus time chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Voltage vs Time</h3>
+                    <canvas id="chartVoltage" role="img" aria-label="Line voltage versus time chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Thermal Utilization</h3>
+                    <canvas id="chartUtilization" role="img" aria-label="Thermal utilization versus time chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Heating Index</h3>
+                    <canvas id="chartHeatingIndex" role="img" aria-label="Heating index versus time chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Health Score</h3>
+                    <canvas id="chartHealth" role="img" aria-label="Thermal health score versus time chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel panel--simulation" aria-labelledby="simTitle">
+            <h2 id="simTitle">Simulation</h2>
+            <p class="panel__hint">
+                Runs the deterministic time-step thermal model from the current Operating Data.
+                Animation is for display only; the model itself is time-step based.
+            </p>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="inpSimDuration">Duration (min)</label>
+                    <input type="number" id="inpSimDuration" value="60" min="1" max="720" step="1" inputmode="decimal">
+                </div>
+                <div class="form-field">
+                    <label for="inpSimStep">Time Step (s)</label>
+                    <input type="number" id="inpSimStep" value="5" min="1" max="60" step="1" inputmode="decimal">
+                </div>
+            </div>
+            <div class="panel__actions">
+                <button type="button" id="btnSimStart" class="btn btn--primary">Start</button>
+                <button type="button" id="btnSimPause" class="btn btn--ghost" disabled>Pause</button>
+                <button type="button" id="btnSimReset" class="btn btn--ghost" disabled>Reset</button>
+            </div>
+            <div class="sim-readout">
+                <span>Elapsed: <strong id="simClock">0 min</strong></span>
+                <span>Status: <strong id="simStatus">Idle</strong></span>
+            </div>
+        </section>
+
+        <section class="panel panel--diagnostics" aria-labelledby="diagTitle">
+            <h2 id="diagTitle">Diagnostics</h2>
+            <p class="panel__hint">
+                Rule-based root-cause analysis. Scores represent <em>diagnostic likelihood</em>,
+                not statistically validated probabilities.
+            </p>
+            <ul class="root-cause-list" id="rootCauseList">
+                <li class="root-cause-item root-cause-item--placeholder">
+                    No diagnostics yet &mdash; run a thermal estimate first.
+                </li>
+            </ul>
+        </section>
+
+        <section class="panel panel--transparency" aria-labelledby="transparencyTitle">
+            <h2 id="transparencyTitle">Engineering Transparency</h2>
+
+            <details class="details-block" open>
+                <summary>Engineering Assumptions</summary>
+                <ul class="list-plain" id="assumptionsList">
+                    <li>Loss segregation <span class="label label--assumed">Assumed</span>: copper 60%, core 20%, mechanical 10%, stray 10% of total rated losses (editable above).</li>
+                    <li>Hot-spot allowance <span class="label label--assumed">Assumed</span>: 10 K above average winding temperature (IEC 60034-1 methodology).</li>
+                    <li>Core loss scaling <span class="label label--derived">Derived</span>: ~ (V/V<sub>rated</sub>)&sup2; &middot; (f/f<sub>rated</sub>)<sup>1.5</sup>.</li>
+                    <li>Friction &amp; windage scaling <span class="label label--derived">Derived</span>: ~ (n/n<sub>rated</sub>)<sup>2.5</sup>.</li>
+                    <li>TEFC cooling effectiveness <span class="label label--derived">Derived</span>: ~ (n/n<sub>rated</sub>)<sup>1.5</sup>, with a low-speed floor.</li>
+                    <li>Voltage imbalance derating <span class="label label--derived">Derived</span>: piecewise-linear per NEMA MG-1.</li>
+                    <li>Insulation life <span class="label label--typical">Typical</span>: "10 K rise &asymp; half life" rule of thumb &mdash; not a validated life prediction.</li>
+                </ul>
+            </details>
+
+            <details class="details-block">
+                <summary>Model Limitations</summary>
+                <ul class="list-plain">
+                    <li>Single-node (first-order) lumped thermal model; real machines exhibit multiple thermal time constants.</li>
+                    <li>Winding and frame temperatures are not separated in v1.</li>
+                    <li>VFD harmonic losses and inrush/startup heating are not modeled.</li>
+                    <li>Duty cycles are approximated as continuous (S1).</li>
+                    <li>Altitude above 1000 m is not corrected.</li>
+                    <li>Frequent-start detection is rule-based only; thermal memory of start events is not accumulated.</li>
+                </ul>
+            </details>
+        </section>
+
+        <section class="panel panel--calctrace" aria-labelledby="calcTraceTitle">
+            <h2 id="calcTraceTitle">Calculation Trace</h2>
+            <p class="panel__hint">
+                Sequential audit trail of every equation used in the most recent estimate.
+                Each step references its equation number, shows the substituted values,
+                and labels the result's provenance.
+            </p>
+            <div class="calctrace-meta" id="calcTraceMeta">No estimate run yet.</div>
+            <ol class="calctrace-list" id="calcTraceList"></ol>
+        </section>
+
+        <section class="panel panel--actions" aria-labelledby="actionsTitle">
+            <h2 id="actionsTitle">Reports &amp; Export</h2>
+            <div class="panel__actions">
+                <button type="button" id="btnPrintReport" class="btn btn--primary">Print Report (PDF)</button>
+                <button type="button" id="btnExportCsv" class="btn btn--ghost">Export CSV</button>
+                <button type="button" id="btnExportJson" class="btn btn--ghost">Export JSON</button>
+            </div>
+        </section>
+
+        <section class="panel panel--persistence" aria-labelledby="persistenceTitle">
+            <h2 id="persistenceTitle">Persistence</h2>
+            <p class="panel__hint">
+                Motor parameters, last operating conditions, and preferences are saved to
+                <code>localStorage</code> in your browser. <strong>No data leaves your device.</strong>
+            </p>
+            <div class="persistence-status" id="persistenceStatus" role="status" aria-live="polite">
+                Checking storage availability…
+            </div>
+            <div class="panel__actions">
+                <button type="button" id="btnSaveMotor" class="btn btn--primary">Save Motor</button>
+                <button type="button" id="btnLoadMotor" class="btn btn--ghost">Load Motor</button>
+                <button type="button" id="btnClearSaved" class="btn btn--ghost">Clear Saved</button>
+                <button type="button" id="btnAutoSaveToggle" class="btn btn--ghost">Auto-Save: Off</button>
+            </div>
+            <div class="persistence-saved-list" id="savedMotorsList">
+                <em>No saved motors.</em>
+            </div>
+        </section>
+
+        <section class="panel panel--validation" aria-labelledby="validationTitle">
+            <h2 id="validationTitle">Validation Suite</h2>
+            <p class="panel__hint">
+                Automated checks of the engineering model against the 6 spec-defined test cases.
+                Each test verifies losses, temperatures, utilization, and diagnostics against
+                hand-computed expected values.
+            </p>
+            <div class="panel__actions">
+                <button type="button" id="btnRunValidation" class="btn btn--primary">Run Validation Suite</button>
+            </div>
+            <div class="validation-summary" id="validationSummary">No validation run yet.</div>
+            <ol class="validation-list" id="validationList"></ol>
+        </section>
+
+    </main>
+
+    <!-- ============== FOOTER ============== -->
+    <footer class="app-footer">
+        <p class="data-labels">
+            Data labels: <span class="label label--measured">Measured</span>
+            <span class="label label--calculated">Calculated</span>
+            <span class="label label--estimated">Estimated</span>
+            <span class="label label--assumed">Assumed</span>
+            <span class="label label--derived">Derived</span>
+            <span class="label label--typical">Typical</span>
+        </p>
+        <blockquote class="disclaimer">
+            This application provides an engineering estimate and is not a substitute
+            for physical temperature measurement or OEM thermal protection.
+        </blockquote>
+        <p class="app-footer__meta">Motor Thermal Digital Twin &middot; static client-side application &middot; no data leaves your browser</p>
+    </footer>
+
+    <!-- Print-only report container, populated by js/reports.js -->
+    <section id="printReport" class="print-only" aria-hidden="true">
+        <div id="reportHeader"></div>
+        <div id="reportBody"></div>
+    </section>
+
+    <!-- Scripts (load order matters!) -->
+    <script src="js/physics.js"></script>
+    <script src="js/motorModel.js"></script>
+    <script src="js/thermalModel.js"></script>
+    <script src="js/confidence.js"></script>
+    <script src="js/rootCause.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/reports.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/validation.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
