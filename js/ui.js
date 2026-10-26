@@ -466,7 +466,7 @@
         renderCalcTrace(ctx);
         renderDiagnostics(ctx.diagnostics);
         renderMotorViz(ctx);
-        renderStatus(ctx);
+        renderStatusFromResults(ctx);
     }
 
     /* ==================================================================
@@ -1161,8 +1161,10 @@
 
     /* ==================================================================
        15. Status badge from utilization + diagnostics
+       (Named renderStatusFromResults to avoid colliding with the
+        badge-only renderStatus() declared earlier in this file.)
        ================================================================== */
-    function renderStatus(ctx) {
+    function renderStatusFromResults(ctx) {
         var d = ctx.thermalResult.derived;
         var diag = ctx.diagnostics;
         var hasHigh = diag.some(function (x) { return x.severity === "high" && x.fires; });
