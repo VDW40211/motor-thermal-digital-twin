@@ -95,7 +95,7 @@ import {
 } from './motor-model';
 
 /** Internal multi-node thermal model state. */
-interface ThermalModelInternal {
+export interface ThermalModelInternal {
   // ── Node temperatures (°C) ──
   windingTemp: number;
   coreTemp: number;

@@ -21,23 +21,14 @@ import {
   calculateRatedTempRise,
   type RatedLossBreakdown,
 } from '@/lib/motor/motor-model';
-import { createThermalModel, stepThermalModel, resetThermalModel, runSimulation } from '@/lib/motor/thermal-model';
+import { createThermalModel, stepThermalModel, resetThermalModel, runSimulation, type ThermalModelInternal } from '@/lib/motor/thermal-model';
 import { calculateConfidence } from '@/lib/motor/confidence';
 import { analyzeRootCauses } from '@/lib/motor/root-cause';
 import { loadPercentFromCurrent, healthScore, getRiskLevel, powerBalanceError } from '@/lib/motor/physics';
 
-// The thermal model is an opaque object — we type it loosely here because
-// its internals (multi-node state) are an implementation detail of the
-// thermal-model module. The store only needs to hold a reference and
-// pass it to stepThermalModel / resetThermalModel.
-type ThermalModelRef = {
-  windingTemp: number;
-  coreTemp: number;
-  frameTemp: number;
-  rotorTemp: number;
-  ratedBreakdown?: import('@/lib/motor/motor-model').RatedLossBreakdown;
-  [key: string]: unknown;
-};
+// The thermal model holds multi-node state (winding, core, frame temps +
+// thermal conductances + time constants). Typed via the exported interface.
+type ThermalModelRef = ThermalModelInternal | null;
 
 interface MotorState {
   // Input state
@@ -114,16 +105,18 @@ export const useMotorStore = create<MotorState>((set, get) => ({
 
     // 1. Get or create thermal model (must exist before computing losses,
     //    because losses are temperature-dependent via R_hot).
-    let model = thermalModelRef;
+    let model: ThermalModelInternal | null = thermalModelRef;
     if (!model) {
       model = createThermalModel(nameplate);
       set({ thermalModelRef: model });
     }
+    // After the above, model is guaranteed non-null.
+    const m: ThermalModelInternal = model;
 
     // 2. Compute losses at the current winding temperature (thermal coupling)
     //    R_s is corrected for the winding temperature inside computeLosses.
-    const currentWindingTemp = model.windingTemp ?? 40;
-    const ratedBreakdown = model.ratedBreakdown ?? segregateRatedLosses(nameplate);
+    const currentWindingTemp = m.windingTemp;
+    const ratedBreakdown = m.ratedBreakdown ?? segregateRatedLosses(nameplate);
     const losses = computeLosses(
       nameplate,
       operating,
@@ -133,7 +126,7 @@ export const useMotorStore = create<MotorState>((set, get) => ({
 
     // 3. Step thermal model forward (multi-node, substepped Euler)
     const thermal = stepThermalModel(
-      model,
+      m,
       nameplate,
       operating,
       losses,
@@ -275,7 +268,7 @@ export const useMotorStore = create<MotorState>((set, get) => ({
       calculations: calcs,
       loadPercent: loadPct,
       riskLevel: risk,
-      thermalModelRef: model,
+      thermalModelRef: m,
     });
   },
 
@@ -297,10 +290,12 @@ export const useMotorStore = create<MotorState>((set, get) => ({
   runSimulation: (duration) => {
     const { nameplate, operating, thermalModelRef } = get();
     if (!thermalModelRef) return;
+    // thermalModelRef is now guaranteed non-null after the guard above.
+    const liveModel = thermalModelRef as ThermalModelInternal;
 
     // Compute losses at current winding temp (thermal coupling)
-    const currentWindingTemp = thermalModelRef.windingTemp ?? 40;
-    const ratedBreakdown = thermalModelRef.ratedBreakdown ?? segregateRatedLosses(nameplate);
+    const currentWindingTemp = liveModel.windingTemp;
+    const ratedBreakdown = liveModel.ratedBreakdown ?? segregateRatedLosses(nameplate);
     const losses = computeLosses(
       nameplate,
       operating,
@@ -308,12 +303,9 @@ export const useMotorStore = create<MotorState>((set, get) => ({
       ratedBreakdown,
     );
 
-    // Create a temp model for simulation (don't affect main state)
-    // Deep-copy the model so the simulation doesn't mutate the live state.
-    const simModel = {
-      ...thermalModelRef,
-      ratedBreakdown,
-    };
+    // Create a temp model for simulation (don't affect main state).
+    // Shallow-copy is sufficient — runSimulation restores the original temps.
+    const simModel: ThermalModelInternal = { ...liveModel };
     const data = runSimulation(simModel, nameplate, operating, losses, duration, 0.5);
 
     // Add health scores
